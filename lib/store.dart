@@ -37,7 +37,7 @@ class AppStore {
   Future<void> upsert(DateTime date, TaskBlock task) async {
     final all = await loadAll();
     final key = dateKey(date);
-    final list = [...(all[key] ?? const [])];
+    final list = <TaskBlock>[...(all[key] ?? const <TaskBlock>[])];
     final idx = list.indexWhere((t) => t.id == task.id);
     if (idx >= 0) {
       list[idx] = task;
