@@ -1,0 +1,76 @@
+name: Build App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+jobs:
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: flutter create . --platforms=android,ios --project-name time_planner --org com.drk
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Patch Android manifest (permissions + app name)
+        run: python3 .github/scripts/patch_android.py
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-planner-android
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+
+  ios:
+    name: Build iOS (no codesign)
+    # iOS 打包需要苹果开发者账号签名；此任务产出未签名 .app，供有证书的本地环境签名
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: flutter create . --platforms=android,ios --project-name time_planner --org com.drk
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build iOS (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-planner-ios
+          path: build/ios/iphoneos/Runner.app
