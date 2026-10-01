@@ -70,22 +70,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _bootstrap() async {
-    await alarms.init();
-    final (lead, endRemind, alarmOn) = await store.loadSettings();
-    setState(() {
-      _lead = lead;
-      _endRemind = endRemind;
-      _alarmOn = alarmOn;
-    });
-    _fired = await store.loadFired(dateKey(DateTime.now()));
-    await _refreshTasks();
-    if (_alarmOn) {
-      await alarms.rescheduleAll(await store.loadAll(),
-          leadMinutes: _lead, endRemind: _endRemind);
+    try {
+      await alarms.init();
+      final (lead, endRemind, alarmOn) = await store.loadSettings();
+      setState(() {
+        _lead = lead;
+        _endRemind = endRemind;
+        _alarmOn = alarmOn;
+      });
+      _fired = await store.loadFired(dateKey(DateTime.now()));
+      await _refreshTasks();
+      if (_alarmOn) {
+        await alarms.rescheduleAll(await store.loadAll(),
+            leadMinutes: _lead, endRemind: _endRemind);
+      }
+    } catch (e) {
+      debugPrint('bootstrap error: $e');
+    } finally {
+      if (mounted) setState(() => _loaded = true);
+      _ticker ??=
+          Timer.periodic(const Duration(seconds: 10), (_) => _onTick());
     }
-    setState(() => _loaded = true);
-    _ticker ??=
-        Timer.periodic(const Duration(seconds: 10), (_) => _onTick());
   }
 
   Future<void> _refreshTasks() async {

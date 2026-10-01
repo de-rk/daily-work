@@ -1,6 +1,8 @@
 /// 闹钟核心：flutter_local_notifications 定时通知，后台/锁屏均能触发
 library;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -18,19 +20,27 @@ class AlarmService {
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings();
-    await _plugin.initialize(
-      const InitializationSettings(android: android, iOS: ios),
-    );
+    try {
+      await _plugin.initialize(
+        const InitializationSettings(android: android, iOS: ios),
+      );
+    } catch (e) {
+      debugPrint('notifications init error: $e');
+    }
 
-    // Android 13+ 通知权限 / Android 12+ 精确闹钟权限
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestExactAlarmsPermission();
+    // Android 13+ 通知权限 / Android 12+ 精确闹钟权限（失败不阻塞启动）
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    try {
+      await androidImpl?.requestNotificationsPermission();
+    } catch (e) {
+      debugPrint('requestNotificationsPermission error: $e');
+    }
+    try {
+      await androidImpl?.requestExactAlarmsPermission();
+    } catch (e) {
+      debugPrint('requestExactAlarmsPermission error: $e');
+    }
 
     _ready = true;
   }
@@ -74,14 +84,22 @@ class AlarmService {
     required int leadMinutes,
     required bool endRemind,
   }) async {
-    await cancelAll();
+    try {
+      await cancelAll();
+    } catch (e) {
+      debugPrint('cancelAll error: $e');
+    }
     final today = DateTime.now();
     for (final entry in all.entries) {
       final date = parseDateKey(entry.key);
       if (date.isBefore(DateTime(today.year, today.month, today.day))) continue;
       for (final t in entry.value) {
-        await scheduleTask(t, date,
-            leadMinutes: leadMinutes, endRemind: endRemind);
+        try {
+          await scheduleTask(t, date,
+              leadMinutes: leadMinutes, endRemind: endRemind);
+        } catch (e) {
+          debugPrint('schedule error for "${t.title}": $e');
+        }
       }
     }
   }
@@ -121,15 +139,34 @@ class AlarmService {
       ),
     );
 
-    await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      when,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        when,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } on PlatformException catch (e) {
+      // 精确闹钟权限被拒（Android 12+）时降级为非精确模式，保证提醒仍能触发
+      debugPrint('exact schedule failed (${e.code}), fallback to inexact');
+      try {
+        await _plugin.zonedSchedule(
+          id,
+          title,
+          body,
+          when,
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (e2) {
+        debugPrint('inexact schedule also failed: $e2');
+      }
+    }
   }
 }
