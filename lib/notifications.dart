@@ -176,7 +176,7 @@ class AlarmService {
   Future<bool?> notificationsEnabled() async {
     final impl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    return impl?.notificationsEnabled();
+    return impl?.areNotificationsEnabled();
   }
 
   /// 立即发送一条测试通知（走同一条闹钟通道，验证铃声/横幅是否正常）
