@@ -121,23 +121,7 @@ class AlarmService {
     final when = tz.TZDateTime.utc(
         utc.year, utc.month, utc.day, utc.hour, utc.minute);
 
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'time_planner_alarm',
-        '任务闹钟',
-        channelDescription: '时间块任务到点提醒',
-        importance: Importance.max,
-        priority: Priority.max,
-        category: AndroidNotificationCategory.alarm,
-        fullScreenIntent: true,
-        playSound: true,
-      ),
-      iOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentSound: true,
-        interruptionLevel: InterruptionLevel.timeSensitive,
-      ),
-    );
+    const details = _alarmDetails;
 
     try {
       await _plugin.zonedSchedule(
@@ -168,5 +152,40 @@ class AlarmService {
         debugPrint('inexact schedule also failed: $e2');
       }
     }
+  }
+
+  static const NotificationDetails _alarmDetails = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'time_planner_alarm',
+          '任务闹钟',
+          channelDescription: '时间块任务到点提醒',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          fullScreenIntent: true,
+          playSound: true,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      );
+
+  /// 通知权限是否开启（Android 13+ 有意义；iOS 返回 null）
+  Future<bool?> notificationsEnabled() async {
+    final impl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    return impl?.notificationsEnabled();
+  }
+
+  /// 立即发送一条测试通知（走同一条闹钟通道，验证铃声/横幅是否正常）
+  Future<void> testAlarm() async {
+    await _plugin.show(
+      9487,
+      '测试提醒 · 时间规划',
+      '收到这条通知并听到铃声，说明闹钟通道正常',
+      _alarmDetails,
+    );
   }
 }

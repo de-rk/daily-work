@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _lead = 5;
   bool _endRemind = false;
   bool _alarmOn = true;
+  bool? _notifEnabled;
 
   Timer? _ticker;
   Set<String> _fired = {};
@@ -73,10 +74,12 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await alarms.init();
       final (lead, endRemind, alarmOn) = await store.loadSettings();
+      final notifEnabled = await alarms.notificationsEnabled();
       setState(() {
         _lead = lead;
         _endRemind = endRemind;
         _alarmOn = alarmOn;
+        _notifEnabled = notifEnabled;
       });
       _fired = await store.loadFired(dateKey(DateTime.now()));
       await _refreshTasks();
@@ -317,6 +320,40 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// 发送测试提醒并给出排查指引
+  Future<void> _testAlarm() async {
+    try {
+      await alarms.testAlarm();
+    } catch (e) {
+      debugPrint('test alarm error: $e');
+    }
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('测试提醒已发送'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('刚才应立即弹出通知并响铃。若没有收到，请依次检查：'),
+            SizedBox(height: 10),
+            Text('1. 系统设置 → 应用 → 时间规划 → 通知权限已开启'),
+            Text('2. 系统设置 → 应用 → 时间规划 → 闹钟和提醒 → 允许'),
+            Text('3. 手机的通知音量（非媒体音量）已调高、未开勿扰模式'),
+            Text('4. 国产系统（小米/华为/OPPO 等）请关闭对本应用的电池优化，并允许后台弹出'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+        ],
+      ),
+    );
+    // 返回后刷新权限状态
+    final enabled = await alarms.notificationsEnabled();
+    if (mounted) setState(() => _notifEnabled = enabled);
+  }
+
   // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
@@ -480,6 +517,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSettingsCard() {
+    final permText = _notifEnabled == null
+        ? null
+        : _notifEnabled!
+            ? '通知权限已开启'
+            : '通知权限未开启，提醒将无法弹出';
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -495,7 +537,10 @@ class _HomeScreenState extends State<HomeScreen> {
         SwitchListTile(
           secondary: const Icon(Icons.alarm, color: primaryColor),
           title: const Text('闹钟提醒'),
-          subtitle: const Text('后台到点时发送系统通知', style: TextStyle(fontSize: 12)),
+          subtitle: Text(permText ?? '后台到点时发送系统通知',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: _notifEnabled == false ? Colors.red : Colors.grey)),
           value: _alarmOn,
           activeColor: primaryColor,
           onChanged: _setAlarmOn,
@@ -517,6 +562,14 @@ class _HomeScreenState extends State<HomeScreen> {
           value: _endRemind,
           activeColor: primaryColor,
           onChanged: _setEndRemind,
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: const Icon(Icons.notifications_active, color: primaryColor),
+          title: const Text('发送测试提醒'),
+          subtitle: const Text('验证通知权限与铃声是否正常', style: TextStyle(fontSize: 12)),
+          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+          onTap: _testAlarm,
         ),
       ]),
     );
